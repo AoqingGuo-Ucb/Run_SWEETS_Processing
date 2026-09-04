@@ -27,13 +27,13 @@ set -o pipefail
 ############### USER SETTINGS #################
 ###############################################
 
-SITE="Chiquita"
+SITE="Prima"
 
 # BBox order: WEST SOUTH EAST NORTH
-WEST=-118.659
-SOUTH=33.4433
-EAST=-118.6317
-NORTH=34.4203
+WEST=-117.646
+SOUTH=33.4704
+EAST=-117.5842
+NORTH=33.5084
 
 START_DATE="2016-01-01"
 END_DATE="2026-07-01"
@@ -785,6 +785,59 @@ if step_enabled 5; then
 else
     echo
     echo "=== [5/6] SKIP: EOF download ==="
+fi
+
+###############################################
+######## PREPARE SWEETS AUXILIARY FILES #######
+###############################################
+
+if step_enabled 6; then
+    echo
+    echo "=== Preparing SWEETS DEM + water mask ==="
+
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo "ERROR: SWEETS config does not exist:"
+        echo "  $CONFIG_FILE"
+        exit 1
+    fi
+
+    $PX python - <<PY
+from sweets.core import Workflow
+from sweets.dem import create_dem, create_water_mask
+
+config = "$CONFIG_FILE"
+
+wf = Workflow.from_yaml(config)
+
+print("DEM:")
+print(f"  {wf.dem_filename}")
+print("DEM bbox:")
+print(f"  {wf._dem_bbox}")
+
+print("Water mask:")
+print(f"  {wf.water_mask_filename}")
+print("Water mask bbox:")
+print(f"  {wf._water_mask_bbox}")
+
+create_dem(wf.dem_filename, wf._dem_bbox)
+create_water_mask(wf.water_mask_filename, wf._water_mask_bbox)
+
+print("SWEETS DEM + water mask preparation completed.")
+PY
+
+    if [[ ! -f "$WORK_DIR/dem.tif" ]]; then
+        echo "ERROR: DEM was not created:"
+        echo "  $WORK_DIR/dem.tif"
+        exit 1
+    fi
+
+    if [[ ! -f "$WORK_DIR/watermask.tif" ]]; then
+        echo "ERROR: water mask was not created:"
+        echo "  $WORK_DIR/watermask.tif"
+        exit 1
+    fi
+
+    echo "DEM and water mask are ready."
 fi
 
 ###############################################
