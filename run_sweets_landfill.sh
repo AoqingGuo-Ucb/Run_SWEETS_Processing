@@ -40,6 +40,9 @@ END_DATE="2026-07-01"
 
 TRACK=71
 
+# Strides used when creating a new SWEETS config.
+SWEETS_STRIDES=(2 4)
+
 SWEETS_REPO="$HOME/Bhaltos/AoqingShare/sfw/sweets"
 PROJECT_ROOT="$HOME/Bhaltos/AoqingShare/CA_Landfill"
 
@@ -499,6 +502,7 @@ if step_enabled 1; then
         --track "$TRACK" \
         --out-dir "$SITE_DIR" \
         --work-dir "$WORK_DIR" \
+        --strides "${SWEETS_STRIDES[@]}" \
         --output "$CONFIG_FILE"
 
     if [[ ! -f "$CONFIG_FILE" ]]; then
