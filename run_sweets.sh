@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# run_sweets_landfill.sh
+# run_sweets.sh
 #
 # Reusable SWEETS / burst2safe workflow:
 #   1. Create SWEETS config
@@ -57,10 +57,10 @@ PROJECT_ROOT="$HOME/Bhaltos/AoqingShare/CA_Landfill"
 # 6 = run SWEETS from SWEETS step 2
 #
 # Recommended usage:
-#   ./run_sweets_landfill.sh 4
+#   ./run_sweets.sh 4
 # starts at SAFE validation and continues through EOF + SWEETS.
 #
-#   ./run_sweets_landfill.sh 6
+#   ./run_sweets.sh 6
 # skips everything except SWEETS.
 #
 # If no positional argument is supplied, workflow starts from DEFAULT_START_STEP.
@@ -449,7 +449,7 @@ PY
 
 echo
 echo "============================================================"
-echo "              SWEETS LANDFILL WORKFLOW"
+echo "              SWEETS PROCESSING WORKFLOW"
 echo "============================================================"
 echo "Site          : $SITE"
 echo "BBox          : $WEST $SOUTH $EAST $NORTH"
