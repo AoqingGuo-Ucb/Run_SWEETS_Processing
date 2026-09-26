@@ -11,6 +11,9 @@ Usage: bash run_sweets_nisar.sh [1|2|3|config] [trusted_site_settings.sh]
   config  Create a NEW configuration only, without downloading/processing.
   -h, --help  Show this help.
 These wrapper modes differ from the Sentinel-1 script's six stages.
+New configurations default to NISAR_L2_GSLC_PROVISIONAL_V1.
+Set NISAR_COLLECTION in your settings file to select BETA instead.
+Resume modes preserve the existing YAML collection; use a new SITE to switch.
 HELP
 }
 case "${1:-1}" in -h|--help) usage; exit 0;; esac
@@ -32,12 +35,17 @@ NISAR_TRACK=""
 NISAR_FRAME=""
 NISAR_FREQUENCY="A"
 NISAR_POLARIZATION="HH"
+NISAR_COLLECTION="NISAR_L2_GSLC_PROVISIONAL_V1"
 # Decimation of the NISAR input grid; do not inherit S1's (2,4) blindly.
 SWEETS_STRIDES=(1 1)
 SWEETS_REPO="$HOME/Bhaltos/AoqingShare/sfw/sweets"
 PROJECT_ROOT="$HOME/Bhaltos/AoqingShare/NISAR_Projects"
 
 if [[ -n "${2:-}" ]]; then source "$2"; fi
+case "$NISAR_COLLECTION" in
+    NISAR_L2_GSLC_PROVISIONAL_V1|NISAR_L2_GSLC_BETA_V1) ;;
+    *) echo 'ERROR: NISAR_COLLECTION must be NISAR_L2_GSLC_PROVISIONAL_V1 or NISAR_L2_GSLC_BETA_V1' >&2; exit 2;;
+esac
 [[ "$SITE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'ERROR: invalid SITE name' >&2; exit 2; }
 [[ -d "$SWEETS_REPO" ]] || { echo "ERROR: missing SWEETS_REPO: $SWEETS_REPO" >&2; exit 2; }
 command -v pixi >/dev/null || { echo 'ERROR: pixi is not available' >&2; exit 2; }
@@ -95,7 +103,7 @@ if [[ "$MODE" == 1 || "$MODE" == config ]]; then
 fi
 [[ -f "$CONFIG_FILE" ]] || { echo 'ERROR: configuration missing; run mode config or 1 first' >&2; exit 2; }
 # Existing YAML is authoritative on resume, not changed shell date/bbox settings.
-pixi run python - "$CONFIG_FILE" "$DATA_DIR" "$WORK_DIR" "$MODE" <<'PY'
+pixi run python - "$CONFIG_FILE" "$DATA_DIR" "$WORK_DIR" "$MODE" "$NISAR_COLLECTION" <<'PY'
 import sys
 from pathlib import Path
 from sweets.core import Workflow
@@ -107,6 +115,20 @@ if Path(wf.search.out_dir).resolve()!=Path(sys.argv[2]).resolve() or Path(wf.wor
     raise SystemExit('ERROR: configuration points outside this NISAR site')
 if wf.overwrite:
     raise SystemExit('ERROR: overwrite=true is not supported by this resume wrapper')
+if 'short_name' not in NisarGslcSearch.model_fields:
+    raise SystemExit('ERROR: installed SWEETS does not support a configurable NISAR collection')
+requested_collection=sys.argv[5]
+if sys.argv[4] in ('1','config'):
+    # The flat SWEETS CLI does not expose the collection. Persist it through
+    # the supported model API before any observation download can start.
+    wf.search.short_name=requested_collection
+    wf.to_yaml(sys.argv[1])
+    wf=Workflow.from_yaml(sys.argv[1])
+    if wf.search.short_name!=requested_collection:
+        raise SystemExit('ERROR: SWEETS did not persist the requested NISAR collection')
+elif wf.search.short_name!=requested_collection:
+    print(f'WARNING: existing YAML uses {wf.search.short_name}; shell settings request {requested_collection}. '
+          'Resuming the existing collection. Use a new SITE with mode 1 or config to switch collections.')
 if sys.argv[4]=='3':
     files=wf.search.existing_files()
     if len(files)<2 or not all(Path(p).is_file() for p in files):
@@ -114,6 +136,7 @@ if sys.argv[4]=='3':
     if not Path(wf.dem_filename).is_file() or not Path(wf.water_mask_filename).is_file():
         raise SystemExit('ERROR: missing auxiliary files; use mode 2 first')
 print(f'NISAR config: {sys.argv[1]}')
+print(f'CMR short_name: {wf.search.short_name}')
 print(f'Source: {wf.search}')
 PY
 if [[ "$MODE" == config ]]; then

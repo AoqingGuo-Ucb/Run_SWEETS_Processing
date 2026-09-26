@@ -6,6 +6,7 @@
 
 - Skips burst2stack, SAFE checks, S1D exclusion, Sentinel-1 EOF downloads, and COMPASS.
 - Uses NISAR track and frame identifiers. Do not reuse a Sentinel-1 relative orbit number.
+- Defaults to the `NISAR_L2_GSLC_PROVISIONAL_V1` collection for new configurations.
 - Defaults to frequency group A and HH polarization. Confirm these against the available products. Some SWEETS versions may select another available frequency or polarization when the requested combination is unavailable; check the download logs for the actual selection.
 - Defaults to strides `(1, 1)`, meaning no additional decimation of the input grid. Sentinel-1 strides `(2, 4)` do not necessarily produce the same ground spacing with NISAR inputs.
 - Writes to a separate `NISAR_Projects` root without mixing existing SAFE data or Sentinel-1 GSLC caches.
@@ -30,6 +31,22 @@ nano site_nisar.sh
 Set `SITE`, WEST/SOUTH/EAST/NORTH, START_DATE/END_DATE, SWEETS_REPO, and PROJECT_ROOT. Use absolute paths. Leaving `NISAR_TRACK` and `NISAR_FRAME` empty allows an unpinned search. For production time-series processing, identify the appropriate NISAR track/frame and set them explicitly. Do not copy Sentinel-1 track 71 into these fields without checking the NISAR identifiers.
 
 Bash executes the settings file using `source`, so use only a trusted file.
+
+## Select Provisional or Beta products
+
+Set the collection in your site settings file:
+
+```bash
+NISAR_COLLECTION="NISAR_L2_GSLC_PROVISIONAL_V1"
+```
+
+For early Beta products, use `NISAR_L2_GSLC_BETA_V1` instead. The wrapper writes this selection to `search.short_name` in the generated YAML through the SWEETS model API, because the flat configuration CLI does not expose this setting. No manual YAML edit is needed. Check the printed `CMR short_name` before interpreting search results.
+
+To switch an existing Beta project to Provisional, choose a new `SITE` in your settings file, set `NISAR_COLLECTION`, verify your NISAR track/frame and dates, and run mode `1`. Alternatively, run mode `config` to review the new configuration before running mode `2`. Existing Beta files and results remain in their original project.
+
+Modes `2` and `3` preserve the existing YAML, including its collection. A mismatch between the shell collection and YAML produces a warning; it does not switch collections or re-download data. This also applies when resuming a manually configured YAML.
+
+Both collections contain GSLC products. Beta products are not fully calibrated; Provisional products are calibrated and partially validated. Provisional coverage generally starts on June 17, 2026, with selected earlier time series being added. Availability depends on the location and acquisition. Processing differences can affect comparisons between maturities, so process them in separate projects unless you have assessed compatibility. See the [ASF availability overview](https://nisar-docs.asf.alaska.edu/availability-overview/) and [Provisional known issues](https://nisar-docs.asf.alaska.edu/provisional-known-issues/).
 
 ## Review the generated configuration first
 

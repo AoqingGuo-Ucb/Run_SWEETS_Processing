@@ -11,6 +11,9 @@ NISAR_TRACK=""
 NISAR_FRAME=""
 NISAR_FREQUENCY="A"
 NISAR_POLARIZATION="HH"
+# Applies when creating a new configuration. Use a new SITE to switch collections.
+NISAR_COLLECTION="NISAR_L2_GSLC_PROVISIONAL_V1"
+# For early pre-calibration products: NISAR_COLLECTION="NISAR_L2_GSLC_BETA_V1"
 SWEETS_STRIDES=(1 1)
 SWEETS_REPO="$HOME/Bhaltos/AoqingShare/sfw/sweets"
 PROJECT_ROOT="$HOME/Bhaltos/AoqingShare/NISAR_Projects"

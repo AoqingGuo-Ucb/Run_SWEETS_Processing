@@ -95,4 +95,78 @@ else:raise SystemExit(99)
         self.assertNotEqual(self.run_script(1).returncode,0)
         self.assertFalse(any('--source' in a for a in self.calls()))
 
+    def test_invalid_collection_stops_before_pixi(self):
+        with self.config.open('a') as f:f.write('NISAR_COLLECTION="invalid"\n')
+        self.assertNotEqual(self.run_script(1).returncode,0)
+        self.assertEqual(self.calls(),[])
+
+    def test_default_collection_passed_to_config_validation(self):
+        self.assertEqual(self.run_script('config').returncode,0)
+        call=next(a for a in self.calls() if a[:3]==['run','python','-'])
+        self.assertEqual(call[-1],'NISAR_L2_GSLC_PROVISIONAL_V1')
+
+
+class CollectionPersistenceTests(unittest.TestCase):
+    """Execute the wrapper's Python block with a file-backed model double."""
+
+    def exercise(self,mode,requested,initial='NISAR_L2_GSLC_BETA_V1',supported=True):
+        import contextlib
+        import io
+        import types
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            config=root/'config.json'
+            config.write_text(json.dumps({'short_name':initial,'extra':'preserved'}))
+            original=config.read_bytes()
+
+            class Search:
+                model_fields={'short_name':object()} if supported else {}
+                def __init__(self,name):
+                    self.short_name=name
+                    self.out_dir=root/'data'
+
+            class Workflow:
+                @classmethod
+                def from_yaml(cls,path):
+                    obj=cls()
+                    obj.payload=json.loads(Path(path).read_text())
+                    obj.search=Search(obj.payload['short_name'])
+                    obj.work_dir=root/'work'
+                    obj.overwrite=False
+                    return obj
+                def to_yaml(self,path):
+                    self.payload['short_name']=self.search.short_name
+                    Path(path).write_text(json.dumps(self.payload))
+
+            core=types.ModuleType('sweets.core');core.Workflow=Workflow
+            download=types.ModuleType('sweets.download');download.NisarGslcSearch=Search
+            block=SCRIPT.read_text().split('<<\'PY\'\n')[-1].split('\nPY\n')[0]
+            output=io.StringIO()
+            with patch.dict(sys.modules,{'sweets.core':core,'sweets.download':download}), patch.object(
+                sys,'argv',['-',str(config),str(root/'data'),str(root/'work'),mode,requested]
+            ), contextlib.redirect_stdout(output):
+                exec(compile(block,str(SCRIPT),'exec'),{})
+            return json.loads(config.read_text()),output.getvalue(),config.read_bytes()==original
+
+    def test_new_config_persists_provisional_and_preserves_other_fields(self):
+        data,output,_=self.exercise('config','NISAR_L2_GSLC_PROVISIONAL_V1')
+        self.assertEqual(data,{'short_name':'NISAR_L2_GSLC_PROVISIONAL_V1','extra':'preserved'})
+        self.assertIn('CMR short_name: NISAR_L2_GSLC_PROVISIONAL_V1',output)
+
+    def test_explicit_beta_is_supported(self):
+        data,_,_=self.exercise('1','NISAR_L2_GSLC_BETA_V1')
+        self.assertEqual(data['short_name'],'NISAR_L2_GSLC_BETA_V1')
+
+    def test_resume_does_not_rewrite_beta_and_warns(self):
+        data,output,unchanged=self.exercise('2','NISAR_L2_GSLC_PROVISIONAL_V1')
+        self.assertTrue(unchanged)
+        self.assertEqual(data['short_name'],'NISAR_L2_GSLC_BETA_V1')
+        self.assertIn('WARNING: existing YAML uses',output)
+
+    def test_missing_model_field_fails(self):
+        with self.assertRaisesRegex(SystemExit,'does not support'):
+            self.exercise('config','NISAR_L2_GSLC_PROVISIONAL_V1',supported=False)
+
 if __name__=='__main__':unittest.main()

@@ -8,6 +8,8 @@ The script supports restarting from six numbered stages, retries individual acqu
 
 For NISAR GSLC inputs, use the separate [`run_sweets_nisar.sh`](run_sweets_nisar.sh) entry point and follow the [NISAR setup and usage guide](README_NISAR.md). It skips the Sentinel-1 SAFE/EOF/COMPASS stages and uses a separate output directory. Its mode numbers differ from the six Sentinel-1 stages below.
 
+New NISAR configurations default to `NISAR_L2_GSLC_PROVISIONAL_V1`. Set `NISAR_COLLECTION` in your site settings to choose Beta instead. Existing configurations retain their collection on resume; use a new `SITE` to switch.
+
 ## Requirements
 
 Use an existing, working SWEETS Pixi environment with:
