@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # NISAR GSLC -> SWEETS/Dolphin. Independent of the Sentinel-1 SAFE workflows.
 set -euo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     cat <<'HELP'
@@ -147,6 +148,7 @@ SWEETS_STEP=1
 [[ "$MODE" != 3 ]] || SWEETS_STEP=3
 # pipefail propagates SWEETS failures while preserving a log for every attempt.
 LOG_FILE="$LOG_DIR/nisar_$(date +%Y%m%dT%H%M%S)_$$.log"
-pixi run sweets run "$CONFIG_FILE" --starting-step "$SWEETS_STEP" 2>&1 | tee "$LOG_FILE"
+[[ -f "$SCRIPT_DIR/run_nisar_checked.py" ]] || { echo 'ERROR: copy run_nisar_checked.py alongside this script' >&2; exit 2; }
+pixi run python "$SCRIPT_DIR/run_nisar_checked.py" "$CONFIG_FILE" --starting-step "$SWEETS_STEP" 2>&1 | tee "$LOG_FILE"
 echo "NISAR processing complete: $WORK_DIR/dolphin"
 echo "Log: $LOG_FILE"

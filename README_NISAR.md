@@ -17,7 +17,15 @@ See the SWEETS implementations for [CLI options](https://github.com/isce-framewo
 
 Use Ubuntu with Bash, Python 3, `flock`, and a working Pixi/SWEETS environment. Your SWEETS installation must support `nisar-gslc`, `NisarGslcSearch`, and `opera_utils.nisar`. Earthdata/ASF download authentication must also be configured.
 
-The script checks these interfaces and stops if they are unavailable. It does not upgrade your environment or fall back to Sentinel-1 processing. Copy `run_sweets_nisar.sh` and `site_nisar.example.sh` to your Ubuntu script directory.
+The script checks these interfaces and stops if they are unavailable. It does not upgrade your environment or fall back to Sentinel-1 processing. Copy `run_sweets_nisar.sh`, `run_nisar_checked.py`, and `site_nisar.example.sh` to your Ubuntu script directory. Keep the Python helper alongside the shell script.
+
+## Duplicate acquisition dates
+
+The runner checks existing NISAR VRT inputs and checks the actual input list again immediately before Dolphin starts, including after a fresh download. More than one input on the same calendar day stops processing and reports all conflicting paths in the run log. HDF5 companions are not counted separately. Different processing versions, polarizations, or frames on the same day must be resolved before using this single-stack workflow. Unrecognized filenames also stop processing rather than bypassing the check.
+
+This check does not select a preferred version, move files, or delete data. Review product metadata and keep a compatible, consistent time series. Move excluded HDF5/VRT pairs outside `data`. If Dolphin has already run on the old input list, back up `work/dolphin` outside its original path before restarting with mode `3`; keep `data`, the DEM, and the water mask. The check prevents duplicate-date inputs but does not guarantee other aspects of processing compatibility.
+
+The helper wraps the installed `Workflow._run_dolphin` method only within the current process, then runs the normal SWEETS CLI. It does not edit the SWEETS installation. Changes to that upstream interface may require an adapter update.
 
 ## Configure a study area
 

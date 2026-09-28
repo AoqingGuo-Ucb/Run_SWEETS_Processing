@@ -30,8 +30,10 @@ if a[:3]==['run','sweets','config']:
  if os.environ.get('FAIL_CONFIG'):raise SystemExit(7)
  Path(a[a.index('--output')+1]).write_text('mock configuration')
 elif a[:2]==['run','python']:
+ if len(a)>2 and a[2].endswith('run_nisar_checked.py'):
+  raise SystemExit(int(os.environ.get('FAIL_RUN','0')))
  if '-c' not in a:sys.stdin.read()
-elif a[:3]==['run','sweets','run']:
+elif (a[:2]==['run','python'] and a[2].endswith('run_nisar_checked.py')):
  raise SystemExit(int(os.environ.get('FAIL_RUN','0')))
 else:raise SystemExit(99)
 ''')
@@ -54,11 +56,11 @@ else:raise SystemExit(99)
         self.assertEqual(call[call.index('--polarizations')+1],'HH')
         self.assertNotIn('--track',call)
         self.assertEqual(call[call.index('--dolphin.strides')+1:call.index('--dolphin.strides')+3],['1','1'])
-        self.assertFalse(any(a[:3]==['run','sweets','run'] for a in self.calls()))
+        self.assertFalse(any((a[:2]==['run','python'] and a[2].endswith('run_nisar_checked.py')) for a in self.calls()))
 
     def test_full_run_uses_sweets_step_one(self):
         r=self.run_script(1);self.assertEqual(r.returncode,0,r.stderr)
-        call=next(a for a in self.calls() if a[:3]==['run','sweets','run'])
+        call=next(a for a in self.calls() if (a[:2]==['run','python'] and a[2].endswith('run_nisar_checked.py')))
         self.assertEqual(call[-2:],['--starting-step','1'])
 
     def test_resume_three_uses_existing_config(self):
@@ -83,7 +85,7 @@ else:raise SystemExit(99)
     def test_config_failure_stops_before_processing(self):
         self.env['FAIL_CONFIG']='1'
         self.assertEqual(self.run_script(1).returncode,7)
-        self.assertFalse(any(a[:3]==['run','sweets','run'] for a in self.calls()))
+        self.assertFalse(any((a[:2]==['run','python'] and a[2].endswith('run_nisar_checked.py')) for a in self.calls()))
 
     def test_processing_failure_propagates(self):
         self.env['FAIL_RUN']='8'
