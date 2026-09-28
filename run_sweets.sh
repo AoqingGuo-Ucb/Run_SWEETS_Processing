@@ -62,10 +62,17 @@ PROJECT_ROOT="$HOME/Bhaltos/AoqingShare/CA_Landfill"
 #
 #   ./run_sweets.sh 6
 # skips everything except SWEETS.
+#   ./run_sweets.sh config
+# backs up and regenerates only the configuration from these settings.
 #
 # If no positional argument is supplied, workflow starts from DEFAULT_START_STEP.
 DEFAULT_START_STEP=1
 START_STEP="${1:-$DEFAULT_START_STEP}"
+CONFIG_ONLY=false
+if [[ "$START_STEP" == config ]]; then
+    CONFIG_ONLY=true
+    START_STEP=1
+fi
 
 # ------------------------------------------------------------
 # Mission filtering
@@ -135,7 +142,7 @@ mkdir -p \
 ###############################################
 
 if [[ ! "$START_STEP" =~ ^[1-6]$ ]]; then
-    echo "ERROR: START_STEP must be 1, 2, 3, 4, 5, or 6."
+    echo "ERROR: START_STEP must be 1, 2, 3, 4, 5, 6, or config."
     exit 1
 fi
 
@@ -146,14 +153,14 @@ if [[ ! -d "$SWEETS_REPO" ]]; then
 fi
 
 # Absolute-orbit checker is required for steps 2-3.
-if [[ "$START_STEP" -le 3 && ! -f "$CHECK_SCRIPT" ]]; then
+if [[ "$CONFIG_ONLY" == false && "$START_STEP" -le 3 && ! -f "$CHECK_SCRIPT" ]]; then
     echo "ERROR: absolute-orbit checker not found:"
     echo "  $CHECK_SCRIPT"
     exit 1
 fi
 
 # SAFE calibration checker is required when step 4 will run.
-if [[ "$START_STEP" -le 4 && ! -f "$CALIBRATION_CHECK_SCRIPT" ]]; then
+if [[ "$CONFIG_ONLY" == false && "$START_STEP" -le 4 && ! -f "$CALIBRATION_CHECK_SCRIPT" ]]; then
     echo "ERROR: SAFE calibration checker not found:"
     echo "  $CALIBRATION_CHECK_SCRIPT"
     echo
@@ -484,8 +491,7 @@ echo "============================================================"
 
 # Do this even when resuming from later steps, because unsupported S1D or
 # known partial SAFEs can make validation/EOF/downstream processing fail.
-quarantine_s1d_safes
-quarantine_failed_safes
+# Cleanup runs after the configuration source has been validated.
 
 ###############################################
 ########### 1. CREATE SWEETS CONFIG ###########
@@ -495,7 +501,14 @@ if step_enabled 1; then
     echo
     echo "=== [1/6] Creating SWEETS config ==="
 
-    $PX sweets config \
+    if [[ -f "$CONFIG_FILE" ]]; then
+        CONFIG_BACKUP="$(mktemp "${CONFIG_FILE}.backup.XXXXXX")" || exit 1
+        cp "$CONFIG_FILE" "$CONFIG_BACKUP" || exit 1
+        echo "Previous configuration backed up: $CONFIG_BACKUP"
+    fi
+    if ! $PX sweets config \
+        --source safe \
+        --polarizations "$POL" \
         --bbox "$WEST" "$SOUTH" "$EAST" "$NORTH" \
         --start "$START_DATE" \
         --end "$END_DATE" \
@@ -503,7 +516,10 @@ if step_enabled 1; then
         --out-dir "$SITE_DIR" \
         --work-dir "$WORK_DIR" \
         --dolphin.strides "${SWEETS_STRIDES[@]}" \
-        --output "$CONFIG_FILE"
+        --output "$CONFIG_FILE"; then
+        echo 'ERROR: Sentinel-1 configuration creation failed; processing stopped.' >&2
+        exit 1
+    fi
 
     if [[ ! -f "$CONFIG_FILE" ]]; then
         echo "ERROR: config was not created: $CONFIG_FILE"
@@ -518,6 +534,32 @@ else
         exit 1
     fi
 fi
+
+# Fail before downloads or cleanup if an existing YAML selects another source.
+if [[ -f "$CONFIG_FILE" ]]; then
+    if ! $PX python - "$CONFIG_FILE" <<'PY'
+import sys
+from sweets.core import Workflow
+wf = Workflow.from_yaml(sys.argv[1])
+kind = getattr(wf.search, 'kind', None)
+if kind != 'safe':
+    raise SystemExit(
+        f'ERROR: expected Sentinel-1 source kind=safe, got {kind!r}. '
+        'Check the script site settings, then run: bash run_sweets.sh config. '
+        'Resume afterward with: bash run_sweets.sh 6.'
+    )
+print('Verified Sentinel-1 source: safe')
+PY
+    then
+        exit 1
+    fi
+fi
+if [[ "$CONFIG_ONLY" == true ]]; then
+    echo "Sentinel-1 configuration ready: $CONFIG_FILE"
+    exit 0
+fi
+quarantine_s1d_safes
+quarantine_failed_safes
 
 ###############################################
 ###### 2. CHECK ALL ABSOLUTE ORBITS FIRST #####

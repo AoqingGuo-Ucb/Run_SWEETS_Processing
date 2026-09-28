@@ -4,6 +4,19 @@
 
 The script supports restarting from six numbered stages, retries individual acquisition downloads, and preserves problematic SAFE products in separate quarantine directories.
 
+## Repair a Sentinel-1 configuration
+
+`run_sweets.sh` explicitly selects `--source safe` and the configured `POL` when generating YAML. It checks the source before continuing, including when resuming, and refuses a NISAR configuration.
+
+If an existing Sentinel-1 project has `search.kind: nisar-gslc`, first verify the site name, bounding box, dates, track, polarization, and paths in `run_sweets.sh`. Then run:
+
+```bash
+bash run_sweets.sh config
+bash run_sweets.sh 6
+```
+
+The `config` mode backs up an existing YAML as `sweets_config.yaml.backup.*`, regenerates it from the script settings, and exits without downloading or processing observations. Custom YAML settings must be reviewed and reapplied from the backup as appropriate. Mode `6` resumes the Sentinel-1 workflow using existing SAFE inputs. Configuration generation errors stop the script instead of allowing an old YAML to be used.
+
 ## NISAR data
 
 For NISAR GSLC inputs, use the separate [`run_sweets_nisar.sh`](run_sweets_nisar.sh) entry point and follow the [NISAR setup and usage guide](README_NISAR.md). It skips the Sentinel-1 SAFE/EOF/COMPASS stages and uses a separate output directory. Its mode numbers differ from the six Sentinel-1 stages below.
