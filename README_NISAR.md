@@ -29,7 +29,7 @@ An explicit path takes precedence and must exist; a typo stops the run instead o
 
 ## Duplicate acquisition dates
 
-The runner uses dates with exactly one VRT input to infer the normal processing version (for example, `P05023`). If all such dates agree, duplicate dates keep that version automatically. Every duplicate group must differ only in the processing-version field and contain exactly one matching input. Mixed reference versions, no reference dates, different observation identifiers, and missing pairs stop the run without moving files.
+The runner uses dates with exactly one VRT input to infer the normal processing version (for example, `P05023`). If one version occurs on more than half of these dates, duplicate dates keep that version automatically. Dates with only one input remain unchanged, even when their version differs from the majority. This can leave mixed processing versions in the resulting time series; it is a duplicate-removal rule, not a scientific compatibility assessment. Every duplicate group must differ only in the processing-version field and contain exactly one matching input. No strict majority (including ties), no reference dates, different observation identifiers, and missing pairs stop the run without moving files.
 
 Excluded HDF5/VRT pairs are moved together to a unique `nisar_duplicate_backup_*` directory beside `data`, with a JSON manifest. Existing `work/dolphin` results are backed up there too so stale results are not reused. Inputs for non-duplicate dates remain unchanged. Nothing is permanently deleted. This matches the existing time series; it does not establish that a version has better scientific quality.
 

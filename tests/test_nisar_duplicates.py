@@ -98,3 +98,23 @@ class AutomaticVersionTests(unittest.TestCase):
                 guard.match_normal_versions(files, data, work)
             self.assertTrue(all(p.exists() for p in files))
             self.assertTrue((work / 'dolphin').exists())
+
+    def test_majority_kept_and_minority_singleton_preserved(self):
+        import tempfile
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data, work, files = self.setup_files(root, [
+                product('20260527', 'X05026'), product('20260608', 'X05026'),
+                product('20260924', 'P05023'), product('20260912', 'P05023'),
+                product('20260912', 'X05026'),
+            ])
+            remaining, changed = guard.match_normal_versions(files, data, work)
+            self.assertTrue(changed)
+            self.assertEqual(remaining, files[:3] + files[4:])
+            self.assertTrue(files[2].exists())
+            self.assertTrue(files[2].with_name(files[2].name.rsplit('.', 2)[0] + '.h5').exists())
+            self.assertFalse(files[3].exists())
+            manifest = json.loads(next(root.glob('nisar_duplicate_backup_*/manifest.json')).read_text())
+            self.assertEqual(manifest['kept_version'], 'X05026')
+            self.assertEqual(manifest['version_counts'], {'X05026': 2, 'P05023': 1})

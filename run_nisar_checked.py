@@ -1,5 +1,5 @@
 """Run SWEETS with a NISAR input check immediately before Dolphin starts."""
-from collections import defaultdict
+from collections import Counter, defaultdict
 from functools import wraps
 from pathlib import Path
 import re
@@ -38,7 +38,7 @@ def check_inputs(files):
 
 
 def match_normal_versions(files, data_dir, work_dir):
-    """Quarantine duplicate variants only when all singleton dates agree."""
+    """Quarantine duplicate variants using a strict majority of singleton dates."""
     files = [Path(p) for p in files]
     groups = defaultdict(list)
     parsed = {}
@@ -57,12 +57,13 @@ def match_normal_versions(files, data_dir, work_dir):
         check_inputs(files)
         return files, False
     references = {day: parsed[paths[0]][0] for day, paths in groups.items() if len(paths) == 1}
-    versions = set(references.values())
-    if len(versions) != 1:
-        raise ValueError('Cannot infer one consistent version from non-duplicate dates: '
+    counts = Counter(references.values())
+    ranked = counts.most_common()
+    if not ranked or ranked[0][1] * 2 <= len(references):
+        raise ValueError('Cannot infer a strict majority version from non-duplicate dates: '
                          + json.dumps(references, sort_keys=True)
                          + '. No files were moved. Select a version explicitly after review.')
-    preferred = next(iter(versions))
+    preferred, votes = ranked[0]
     excluded = []
     for day, paths in duplicates.items():
         keep = [p for p in paths if parsed[p][0] == preferred]
@@ -86,7 +87,7 @@ def match_normal_versions(files, data_dir, work_dir):
         raise ValueError('Refusing to move a symlinked Dolphin work directory')
     backup = Path(tempfile.mkdtemp(prefix='nisar_duplicate_backup_', dir=data_dir.parent))
     (backup / 'data').mkdir()
-    manifest = {'kept_version': preferred, 'reference_dates': references,
+    manifest = {'kept_version': preferred, 'reference_dates': references, 'version_counts': dict(counts),
                 'moved_inputs': [str(p) for p in moves],
                 'dolphin_backup': str(dolphin) if dolphin.exists() else None}
     (backup / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
@@ -104,7 +105,7 @@ def match_normal_versions(files, data_dir, work_dir):
         for original, target in reversed(completed):
             target.rename(original)
         raise
-    print(f'Kept version {preferred}, matching {len(references)} non-duplicate dates. '
+    print(f'Kept version {preferred}, matching {votes}/{len(references)} non-duplicate dates. '
           f'Backed up {len(excluded)} excluded HDF5/VRT pairs to {backup}', flush=True)
     remaining = [p for p in files if p not in excluded]
     check_inputs(remaining)
