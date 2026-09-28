@@ -45,3 +45,56 @@ class DuplicateTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertEqual(Workflow()._run_dolphin([product('20260912'), product('20260924')]), 'processed')
         self.assertEqual(len(calls), 1)
+
+
+class AutomaticVersionTests(unittest.TestCase):
+    def setup_files(self, root, names):
+        data = root / 'data'
+        data.mkdir()
+        work = root / 'work'
+        (work / 'dolphin').mkdir(parents=True)
+        (work / 'dolphin' / 'old-result').write_text('old')
+        files = []
+        for name in names:
+            path = data / name
+            path.write_text('vrt')
+            path.with_name(name.rsplit('.', 2)[0] + '.h5').write_text('h5')
+            files.append(path)
+        return data, work, files
+
+    def test_matches_singletons_and_backs_up_pairs_and_work(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data, work, files = self.setup_files(root, [product('20260924'), product('20260912'), product('20260912', 'X05026')])
+            remaining, changed = guard.match_normal_versions(files, data, work)
+            self.assertTrue(changed)
+            self.assertEqual(remaining, files[:2])
+            self.assertEqual(len(list(data.iterdir())), 4)
+            backup = next(root.glob('nisar_duplicate_backup_*'))
+            self.assertEqual(len(list((backup / 'data').iterdir())), 2)
+            self.assertTrue((backup / 'dolphin' / 'old-result').is_file())
+            self.assertFalse((work / 'dolphin').exists())
+            self.assertFalse(guard.match_normal_versions(remaining, data, work)[1])
+
+    def test_mixed_singletons_leave_everything_unchanged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data, work, files = self.setup_files(root, [product('20260924'), product('20260726', 'X05026'), product('20260912'), product('20260912', 'X05026')])
+            with self.assertRaisesRegex(ValueError, 'Cannot infer'):
+                guard.match_normal_versions(files, data, work)
+            self.assertEqual(len(list(data.iterdir())), 8)
+            self.assertTrue((work / 'dolphin' / 'old-result').exists())
+            self.assertFalse(list(root.glob('nisar_duplicate_backup_*')))
+
+    def test_missing_pair_leaves_everything_unchanged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data, work, files = self.setup_files(root, [product('20260924'), product('20260912'), product('20260912', 'X05026')])
+            files[-1].with_name(files[-1].name.rsplit('.', 2)[0] + '.h5').unlink()
+            with self.assertRaisesRegex(ValueError, 'missing input pair'):
+                guard.match_normal_versions(files, data, work)
+            self.assertTrue(all(p.exists() for p in files))
+            self.assertTrue((work / 'dolphin').exists())

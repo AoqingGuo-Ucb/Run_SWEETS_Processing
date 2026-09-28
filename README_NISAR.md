@@ -29,9 +29,11 @@ An explicit path takes precedence and must exist; a typo stops the run instead o
 
 ## Duplicate acquisition dates
 
-The runner checks existing NISAR VRT inputs and checks the actual input list again immediately before Dolphin starts, including after a fresh download. More than one input on the same calendar day stops processing and reports all conflicting paths in the run log. HDF5 companions are not counted separately. Different processing versions, polarizations, or frames on the same day must be resolved before using this single-stack workflow. Unrecognized filenames also stop processing rather than bypassing the check.
+The runner uses dates with exactly one VRT input to infer the normal processing version (for example, `P05023`). If all such dates agree, duplicate dates keep that version automatically. Every duplicate group must differ only in the processing-version field and contain exactly one matching input. Mixed reference versions, no reference dates, different observation identifiers, and missing pairs stop the run without moving files.
 
-This check does not select a preferred version, move files, or delete data. Review product metadata and keep a compatible, consistent time series. Move excluded HDF5/VRT pairs outside `data`. If Dolphin has already run on the old input list, back up `work/dolphin` outside its original path before restarting with mode `3`; keep `data`, the DEM, and the water mask. The check prevents duplicate-date inputs but does not guarantee other aspects of processing compatibility.
+Excluded HDF5/VRT pairs are moved together to a unique `nisar_duplicate_backup_*` directory beside `data`, with a JSON manifest. Existing `work/dolphin` results are backed up there too so stale results are not reused. Inputs for non-duplicate dates remain unchanged. Nothing is permanently deleted. This matches the existing time series; it does not establish that a version has better scientific quality.
+
+Existing duplicates are resolved before processing starts. If duplicates are found only after a fresh download, they are backed up and the run stops; resume with mode `3` to rebuild from the corrected list. Copy the updated `run_nisar_checked.py` to the helper location printed by the shell script. HDF5 companions are not counted as separate observations. The final input list is checked before Dolphin starts.
 
 The helper wraps the installed `Workflow._run_dolphin` method only within the current process, then runs the normal SWEETS CLI. It does not edit the SWEETS installation. Changes to that upstream interface may require an adapter update.
 
