@@ -17,7 +17,15 @@ See the SWEETS implementations for [CLI options](https://github.com/isce-framewo
 
 Use Ubuntu with Bash, Python 3, `flock`, and a working Pixi/SWEETS environment. Your SWEETS installation must support `nisar-gslc`, `NisarGslcSearch`, and `opera_utils.nisar`. Earthdata/ASF download authentication must also be configured.
 
-The script checks these interfaces and stops if they are unavailable. It does not upgrade your environment or fall back to Sentinel-1 processing. Copy `run_sweets_nisar.sh`, `run_nisar_checked.py`, and `site_nisar.example.sh` to your Ubuntu script directory. Keep the Python helper alongside the shell script.
+The script checks these interfaces and stops if they are unavailable. It does not upgrade your environment or fall back to Sentinel-1 processing. Copy the shell script and settings to your Ubuntu script directory. Place `run_nisar_checked.py` in `SWEETS_REPO` (alongside your other SWEETS helpers), or beside the shell script as a fallback. The default lookup checks `SWEETS_REPO` first.
+
+To keep the helper anywhere else, set an absolute path in your site settings:
+
+```bash
+NISAR_CHECK_SCRIPT="/absolute/path/to/run_nisar_checked.py"
+```
+
+An explicit path takes precedence and must exist; a typo stops the run instead of silently falling back. The selected path is printed before processing. Configuration-only mode does not require the helper.
 
 ## Duplicate acquisition dates
 

@@ -40,6 +40,8 @@ NISAR_COLLECTION="NISAR_L2_GSLC_PROVISIONAL_V1"
 # Decimation of the NISAR input grid; do not inherit S1's (2,4) blindly.
 SWEETS_STRIDES=(1 1)
 SWEETS_REPO="$HOME/Bhaltos/AoqingShare/sfw/sweets"
+# Optional absolute path; empty searches SWEETS_REPO, then this script's directory.
+NISAR_CHECK_SCRIPT=""
 PROJECT_ROOT="$HOME/Bhaltos/AoqingShare/NISAR_Projects"
 
 if [[ -n "${2:-}" ]]; then source "$2"; fi
@@ -49,6 +51,21 @@ case "$NISAR_COLLECTION" in
 esac
 [[ "$SITE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'ERROR: invalid SITE name' >&2; exit 2; }
 [[ -d "$SWEETS_REPO" ]] || { echo "ERROR: missing SWEETS_REPO: $SWEETS_REPO" >&2; exit 2; }
+if [[ "$MODE" != config ]]; then
+    if [[ -z "$NISAR_CHECK_SCRIPT" ]]; then
+        if [[ -f "$SWEETS_REPO/run_nisar_checked.py" ]]; then
+            NISAR_CHECK_SCRIPT="$SWEETS_REPO/run_nisar_checked.py"
+        else
+            NISAR_CHECK_SCRIPT="$SCRIPT_DIR/run_nisar_checked.py"
+        fi
+    fi
+    [[ "$NISAR_CHECK_SCRIPT" == /* && -f "$NISAR_CHECK_SCRIPT" ]] || {
+        echo "ERROR: NISAR_CHECK_SCRIPT must point to an existing absolute file path: $NISAR_CHECK_SCRIPT" >&2
+        echo 'Place run_nisar_checked.py in SWEETS_REPO or beside this script, or set NISAR_CHECK_SCRIPT.' >&2
+        exit 2
+    }
+    echo "NISAR input checker: $NISAR_CHECK_SCRIPT"
+fi
 command -v pixi >/dev/null || { echo 'ERROR: pixi is not available' >&2; exit 2; }
 command -v flock >/dev/null || { echo 'ERROR: flock is required (run on Ubuntu)' >&2; exit 2; }
 python3 - "$WEST" "$SOUTH" "$EAST" "$NORTH" "$START_DATE" "$END_DATE" \
@@ -148,7 +165,6 @@ SWEETS_STEP=1
 [[ "$MODE" != 3 ]] || SWEETS_STEP=3
 # pipefail propagates SWEETS failures while preserving a log for every attempt.
 LOG_FILE="$LOG_DIR/nisar_$(date +%Y%m%dT%H%M%S)_$$.log"
-[[ -f "$SCRIPT_DIR/run_nisar_checked.py" ]] || { echo 'ERROR: copy run_nisar_checked.py alongside this script' >&2; exit 2; }
-pixi run python "$SCRIPT_DIR/run_nisar_checked.py" "$CONFIG_FILE" --starting-step "$SWEETS_STEP" 2>&1 | tee "$LOG_FILE"
+pixi run python "$NISAR_CHECK_SCRIPT" "$CONFIG_FILE" --starting-step "$SWEETS_STEP" 2>&1 | tee "$LOG_FILE"
 echo "NISAR processing complete: $WORK_DIR/dolphin"
 echo "Log: $LOG_FILE"

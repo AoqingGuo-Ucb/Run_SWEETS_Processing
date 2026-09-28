@@ -16,4 +16,7 @@ NISAR_COLLECTION="NISAR_L2_GSLC_PROVISIONAL_V1"
 # For early pre-calibration products: NISAR_COLLECTION="NISAR_L2_GSLC_BETA_V1"
 SWEETS_STRIDES=(1 1)
 SWEETS_REPO="$HOME/Bhaltos/AoqingShare/sfw/sweets"
+# Empty: search SWEETS_REPO first, then the shell script directory.
+# Alternatively set the absolute path to run_nisar_checked.py anywhere else.
+NISAR_CHECK_SCRIPT=""
 PROJECT_ROOT="$HOME/Bhaltos/AoqingShare/NISAR_Projects"
