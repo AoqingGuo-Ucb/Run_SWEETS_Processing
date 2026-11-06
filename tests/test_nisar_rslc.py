@@ -43,3 +43,20 @@ class StackTests(unittest.TestCase):
                          [('20260912','20260924'),('20260924','20260930')])
         with self.assertRaisesRegex(ValueError, 'No date pairs'):
             plan_stack(names, max_days=5)
+
+    def test_required_gslc_defaults_and_selected_band(self):
+        from run_nisar_rslc import apply_gslc_defaults
+        base = {'runconfig': {'groups': {'debug_level_group': {'debug_switch': False},
+                'processing': {'blocksize': 512, 'flatten': True, 'geocode': {
+                    'output_posting': {'A': None, 'B': None}}}}}}
+        for band in ('A', 'B'):
+            post = {'x_posting': 10, 'y_posting': 10}
+            user = {'runconfig': {'groups': {'processing': {'geocode': {
+                'output_posting': {band: post}}, 'input_subset': {'list_of_frequencies': {band: ['HH']}}}}}}
+            groups = apply_gslc_defaults(user, base)['runconfig']['groups']
+            proc = groups['processing']
+            self.assertEqual(set(proc['geocode']['output_posting']), {'A','B'})
+            self.assertEqual(proc['geocode']['output_posting'][band], post)
+            self.assertEqual(proc['input_subset']['list_of_frequencies'], {band: ['HH']})
+            self.assertEqual((groups['debug_level_group'], proc['blocksize'], proc['flatten']),
+                             ({'debug_switch': False}, 512, True))

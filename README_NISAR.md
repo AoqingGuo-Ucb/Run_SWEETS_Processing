@@ -207,3 +207,14 @@ A date separated from every other date by more than the limit has no output
 pair, although it is still a stack input. Review the plan and remove any
 unneeded IDs before running. The original Python pair and stack commands
 remain supported.
+
+The RSLC driver fills required GSLC debug, blocksize, flatten and posting
+fields from the installed ISCE3 workflow defaults. The unused frequency's
+posting entry does not enable processing of that frequency.
+
+For a failed project, preserve the old directory. Set `RSLC_REUSE_PROJECT`
+in the environment to its absolute path, and `PROJECT` to a new directory
+(or change the site script's PROJECT setting). The driver reads existing
+RSLCs in place if the filename and recorded source URL match, and downloads
+the remaining products. Keep the old directory available. The driver does
+not reuse partial geocoding outputs.

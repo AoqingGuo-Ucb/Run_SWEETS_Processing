@@ -2,6 +2,7 @@
 from datetime import datetime
 import argparse
 import importlib.util
+import os
 import inspect
 import json
 import math
@@ -51,6 +52,21 @@ def plan_stack(names, bandwidth=None, max_days=None):
     return ids, pairs
 
 
+def apply_gslc_defaults(config, defaults):
+    """Use the installed ISCE3 release's required values and both posting slots."""
+    groups = config['runconfig']['groups']
+    base = defaults['runconfig']['groups']
+    groups['debug_level_group'] = base['debug_level_group']
+    processing = groups['processing']
+    for key in ('blocksize', 'flatten'):
+        processing.setdefault(key, base['processing'][key])
+    geo = processing['geocode']
+    geo['output_posting'] = {
+        **base['processing']['geocode']['output_posting'], **geo['output_posting']
+    }
+    return config
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("action", choices=["search", "pair", "stack", "plan"])
@@ -97,6 +113,9 @@ def main():
         if not importlib.util.find_spec("nisar.workflows.gslc"):
             p.error("Install the ISCE3 NISAR GSLC workflow in this environment.")
         import yaml
+        from nisar.workflows.helpers import WORKFLOW_SCRIPTS_DIR
+        defaults_path = Path(WORKFLOW_SCRIPTS_DIR) / 'defaults' / 'gslc.yaml'
+        defaults = yaml.safe_load(defaults_path.read_text())
         import h5py
         import numpy as np
         from pyproj import Transformer
@@ -123,6 +142,11 @@ def main():
         return
     if any(v not in urls for v in ids):
         p.error("Selected IDs not found in the requested RSLC collection, dates, AOI and track/frame.")
+    previous = os.environ.get('RSLC_REUSE_PROJECT')
+    previous_sources = {}
+    if previous:
+        previous = Path(previous).expanduser().resolve()
+        previous_sources = json.loads((previous/'sources.json').read_text())['sources']
     earthaccess.login()
     root = args.project.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -142,10 +166,15 @@ def main():
     expected_grid = None
     common_valid = None
     for name in ids:
-        files = earthaccess.download([urls[name]], str(raw))
         src = raw/(name+'.h5')
-        if not files or not src.is_file():
-            raise RuntimeError(f"Download incomplete: {src}")
+        cached = previous/'rslc'/src.name if previous else None
+        if cached and cached.is_file() and previous_sources.get(name) == urls[name]:
+            src = cached
+            print(f'Reusing RSLC: {src}', flush=True)
+        else:
+            files = earthaccess.download([urls[name]], str(raw))
+            if not files or not src.is_file():
+                raise RuntimeError(f"Download incomplete: {src}")
         with h5py.File(src) as hf:
             band = hf[f'/science/LSAR/RSLC/swaths/frequency{freq}']
             if pol not in band:
@@ -167,7 +196,7 @@ def main():
                            'top_left':{'x_abs':left,'y_abs':top},'bottom_right':{'x_abs':right,'y_abs':bottom}}}
         }}}
         yml = folder/'geocode.yaml'
-        yml.write_text(yaml.safe_dump(config))
+        yml.write_text(yaml.safe_dump(apply_gslc_defaults(config, defaults)))
         subprocess.run([sys.executable,'-m','nisar.workflows.gslc',str(yml)],cwd=folder,check=True)
         paths = _nisar_h5_to_vrts(out,freq,[pol])
         if len(paths)!=1:
