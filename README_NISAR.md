@@ -121,3 +121,89 @@ The script has passed Bash syntax checks and offline tests covering argument rou
 python3 -m unittest discover -s tests -v
 bash -n run_sweets_nisar.sh
 ```
+
+## Experimental pair from Level-1 RSLC (no GSLC download)
+
+Use `run_nisar_rslc.py` for a separate two-date experiment. It searches the
+`NISAR_L1_RSLC_PROVISIONAL_V1` collection, downloads two explicitly selected
+full-frame RSLC HDF5s, runs the ISCE3 NISAR GSLC processor for each date on
+one fixed AOI grid, and uses the SWEETS displacement-config builder and Dolphin
+to form a wrapped interferogram. No downloaded Level-2 product is used.
+This is geometry-based geocoding with the supplied DEM and embedded orbits,
+not image-based residual offset estimation. Grid checks cannot prove subpixel
+registration. Compare stable terrain, coherence and the same date pair before
+drawing conclusions about a published GSLC.
+
+Copy the Python script into the Ubuntu SWEETS repository. In a Pixi environment
+with Earthdata credentials, earthaccess, the ISCE3 **nisar.workflows** package,
+GDAL, pyproj, h5py, PyYAML and the NISAR-capable SWEETS/Dolphin versions:
+
+```bash
+cd "$HOME/Bhaltos/AoqingShare/sfw/sweets"
+area=(--bbox 85.3894 28.1588 85.6635 28.3509 --track 98 --frame 16 --dates 2026-09-12 2026-09-24)
+pixi run python run_nisar_rslc.py search "${area[@]}"
+```
+
+Select two printed IDs with different dates and the same processing release.
+Replace both sample ID placeholders and the DEM path below. Use a DEM with
+ellipsoidal heights and sufficient coverage for the ISCE3 processor. The
+bounding box limits the output grid, not the raw downloads. Allow space for two
+full RSLCs, scratch files and intermediate products.
+
+```bash
+pixi run python run_nisar_rslc.py pair "${area[@]}" \
+  --ids FIRST_RSLC_ID SECOND_RSLC_ID --frequency A --pol HH \
+  --dem /absolute/path/to/ellipsoidal_dem.tif \
+  --project "$HOME/Bhaltos/AoqingShare/NISAR_Projects/Langtung_RSLC_pair01"
+```
+
+The project must be new. Raw downloads are under `rslc/`, per-date runconfigs
+and local geocoded intermediates are in per-granule directories, and Dolphin
+outputs are under `dolphin/`. The program prints the wrapped interferogram path.
+Local GSLC filenames follow the source acquisition naming convention for
+SWEETS compatibility; these are user-generated products, not ASF releases.
+
+### Multiple wrapped interferograms from RSLCs
+
+Use the same Ubuntu environment and AOI settings as the pair example, extending
+the date range as needed. From the SWEETS repository:
+
+```bash
+area=(--bbox 85.3894 28.1588 85.6635 28.3509 --track 98 --frame 16 --dates 2026-06-17 2026-09-26)
+pixi run python run_nisar_rslc.py search "${area[@]}" | grep '^NISAR_L1_PR_RSLC_' > rslc_ids.txt
+nano rslc_ids.txt
+pixi run python run_nisar_rslc.py stack "${area[@]}" --ids-file rslc_ids.txt \
+  --max-bandwidth 2 --frequency A --pol HH --dem /absolute/path/to/ellipsoidal_dem.tif \
+  --project "$HOME/Bhaltos/AoqingShare/NISAR_Projects/Langtung_RSLC_stack01"
+```
+
+Keep one compatible product per date and a consistent processing release.
+Each selected full RSLC is downloaded and geocoded once within the new project.
+Dolphin processes the stack together. Bandwidth K connects each acquisition to
+the next K acquisitions in time order, regardless of the gap in days. For 10
+dates, K=1 requests 9 pairs, K=2 requests 17, and K=9 requests all 45.
+The project records requested_pairs.txt and checks for those date pairs in the
+stitched outputs. No unwrapping or time-series inversion is requested. Existing
+pair projects are not reused by this mode.
+
+### Bash wrapper with a temporal baseline in days
+
+Keep `run_nisar_rslc_stack.sh` beside the **updated** `run_nisar_rslc.py`.
+Edit the shell settings or supply a trusted settings file as argument 2 to
+every command. The included AOI and track/frame are Langtung examples.
+Set `MAX_TEMPORAL_BASELINE_DAYS=36` for all pairs at most 36 calendar days
+apart (inclusive). Leave `MAX_BANDWIDTH=""` for no acquisition-count limit;
+if set, both limits must pass. Leave `DEM=""` to have `run` call SWEETS `create_dem` with a 0.25-degree AOI buffer before processing. It checks raster readability and AOI coverage, then reuses the terrain file under `nisar_rslc_dem_cache/<bounds-key>/dem.tif` beside the project directory. Search and plan never download a DEM. For a known ellipsoidal DEM, set `DEM` to its absolute path instead. Horizontal grid checks do not certify the vertical datum; confirm the height convention of your installed SWEETS terrain provider for scientific use.
+Use different SITE/IDS_FILE/PROJECT settings for different stacks.
+
+```bash
+bash run_nisar_rslc_stack.sh search   # Creates a candidate ID list; does not overwrite an existing list.
+# Review the printed file; select one compatible product per date.
+bash run_nisar_rslc_stack.sh plan     # Offline preview of exact pairs; no imagery download.
+bash run_nisar_rslc_stack.sh run      # New project; downloads selected RSLCs and generates wrapped IFGs.
+```
+
+A date separated from every other date by more than the limit has no output
+pair, although it is still a stack input. Review the plan and remove any
+unneeded IDs before running. The original Python pair and stack commands
+remain supported.

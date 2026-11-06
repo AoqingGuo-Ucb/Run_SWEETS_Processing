@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# NISAR Level-1 RSLC stack: search, preview or process.
+set -euo pipefail
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+mode=${1:-help}
+case "$mode" in
+    help|-h|--help) echo "Usage: bash run_nisar_rslc_stack.sh {search|plan|run} [trusted_site_settings.sh]"; exit 0 ;;
+    search|plan|run) ;;
+    *) echo "Unknown mode: $mode" >&2; exit 2 ;;
+esac
+
+# Example settings for Langtung. Change these for a different study area.
+SITE=Langtung
+BBOX=(85.3894 28.1588 85.6635 28.3509)
+TRACK=98
+FRAME=16
+START_DATE=2026-06-17
+END_DATE=2026-09-26
+MAX_TEMPORAL_BASELINE_DAYS=36
+MAX_BANDWIDTH=""   # Optional: also restrict to the next K acquisitions.
+FREQUENCY=A
+POL=HH
+POSTING=10
+DEM=""             # Empty: prepare a DEM with SWEETS. Otherwise use an existing ellipsoidal DEM.
+SWEETS_REPO="$HOME/Bhaltos/AoqingShare/sfw/sweets"
+RSLC_HELPER="$script_dir/run_nisar_rslc.py"
+if [[ -n "${2:-}" ]]; then source "$2"; fi
+IDS_FILE=${IDS_FILE:-"$script_dir/${SITE}_rslc_ids.txt"}
+PROJECT=${PROJECT:-"$HOME/Bhaltos/AoqingShare/NISAR_Projects/${SITE}_RSLC_${MAX_TEMPORAL_BASELINE_DAYS}d"}
+[[ "$IDS_FILE" == /* && "$PROJECT" == /* && "$RSLC_HELPER" == /* ]] || { echo 'Use absolute paths in settings.' >&2; exit 2; }
+cd "$SWEETS_REPO"
+base=(--bbox "${BBOX[@]}" --track "$TRACK" --frame "$FRAME" --dates "$START_DATE" "$END_DATE")
+if [[ "$mode" == search ]]; then
+    [[ ! -e "$IDS_FILE" ]] || { echo "Existing list preserved: $IDS_FILE" >&2; exit 2; }
+    tmp=$(mktemp "${IDS_FILE}.XXXXXX")
+    trap 'rm -f -- "$tmp"' EXIT
+    pixi run python "$RSLC_HELPER" search "${base[@]}" | awk '/^NISAR_L1_PR_RSLC_/ {print}' > "$tmp"
+    [[ -s "$tmp" ]] || { echo 'No RSLC IDs returned.' >&2; exit 1; }
+    ln "$tmp" "$IDS_FILE"
+    echo "Review $IDS_FILE; keep one compatible product per acquisition date."
+    exit 0
+fi
+args=("${base[@]}" --ids-file "$IDS_FILE" --max-days "$MAX_TEMPORAL_BASELINE_DAYS")
+if [[ -n "$MAX_BANDWIDTH" ]]; then args+=(--max-bandwidth "$MAX_BANDWIDTH"); fi
+if [[ "$mode" == plan ]]; then
+    exec python3 "$RSLC_HELPER" plan "${args[@]}"
+fi
+if [[ -n "$DEM" ]]; then
+    [[ "$DEM" == /* && -f "$DEM" ]] || { echo 'Explicit DEM must be an existing absolute file path.' >&2; exit 2; }
+else
+    [[ ! -e "$PROJECT" ]] || { echo "Project already exists: $PROJECT" >&2; exit 2; }
+    # Reject an invalid date network before downloading terrain data.
+    python3 "$RSLC_HELPER" plan "${args[@]}" >/dev/null
+    # Keep terrain outside PROJECT: the stack runner requires a new project directory.
+    dem_result=$(mktemp)
+    trap 'rm -f -- "$dem_result"' EXIT
+    pixi run python - "$dem_result" "$PROJECT" "${BBOX[@]}" <<'PYDEM'
+import contextlib
+import fcntl
+import hashlib
+import json
+from pathlib import Path
+import sys
+import tempfile
+from osgeo import gdal, osr
+from sweets.dem import create_dem
+
+result = Path(sys.argv[1])
+project = Path(sys.argv[2])
+w, s, e, n = map(float, sys.argv[3:])
+bounds = (max(-180., w-.25), max(-90., s-.25), min(180., e+.25), min(90., n+.25))
+key = hashlib.sha256(json.dumps(bounds).encode()).hexdigest()[:20]
+cache = project.parent / "nisar_rslc_dem_cache" / key
+cache.mkdir(parents=True, exist_ok=True)
+target = cache / "dem.tif"
+
+def check(path):
+    ds = gdal.Open(str(path))
+    if not ds or ds.RasterCount < 1:
+        raise SystemExit(f"Unreadable DEM: {path}")
+    gt = ds.GetGeoTransform()
+    srs = ds.GetSpatialRef()
+    wgs = osr.SpatialReference()
+    wgs.ImportFromEPSG(4326)
+    if not srs or not srs.IsSameGeogCS(wgs) or not srs.IsGeographic() or gt[2] or gt[4] or gt[1]<=0 or gt[5]>=0:
+        raise SystemExit(f"Unexpected geographic DEM grid: {path}")
+    if not (gt[0] <= w < e <= gt[0]+ds.RasterXSize*gt[1] and
+            gt[3]+ds.RasterYSize*gt[5] <= s < n <= gt[3]):
+        raise SystemExit(f"DEM does not cover the requested AOI: {path}")
+
+with (cache / ".lock").open("a") as lock, contextlib.redirect_stdout(sys.stderr):
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    if target.exists():
+        check(target)
+    else:
+        print(f"Preparing SWEETS DEM for buffered bounds {bounds}", file=sys.stderr)
+        with tempfile.TemporaryDirectory(dir=cache) as tmp:
+            staged = Path(tmp) / "dem.tif"
+            create_dem(staged, bounds)
+            check(staged)
+            staged.replace(target)
+result.write_text(str(target) + "\n")
+PYDEM
+    IFS= read -r DEM < "$dem_result"
+    rm -f -- "$dem_result"
+    trap - EXIT
+fi
+echo "RSLC geocoding DEM: $DEM"
+exec pixi run python "$RSLC_HELPER" stack "${args[@]}" --dem "$DEM" --project "$PROJECT" --frequency "$FREQUENCY" --pol "$POL" --posting "$POSTING"
