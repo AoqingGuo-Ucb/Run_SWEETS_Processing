@@ -23,12 +23,13 @@ POL=HH
 POSTING=10
 DEM=""             # Empty: prepare a DEM with SWEETS. Otherwise use an existing ellipsoidal DEM.
 SWEETS_REPO="$HOME/Bhaltos/AoqingShare/sfw/sweets"
-RSLC_HELPER="$script_dir/run_nisar_rslc.py"
 if [[ -n "${2:-}" ]]; then source "$2"; fi
+RSLC_HELPER=${RSLC_HELPER:-"$SWEETS_REPO/run_nisar_rslc.py"}
 IDS_FILE=${IDS_FILE:-"$script_dir/${SITE}_rslc_ids.txt"}
 PROJECT=${PROJECT:-"$HOME/Bhaltos/AoqingShare/NISAR_Projects/${SITE}_RSLC_${MAX_TEMPORAL_BASELINE_DAYS}d"}
 [[ "$IDS_FILE" == /* && "$PROJECT" == /* && "$RSLC_HELPER" == /* ]] || { echo 'Use absolute paths in settings.' >&2; exit 2; }
 cd "$SWEETS_REPO"
+[[ -f "$RSLC_HELPER" && -r "$RSLC_HELPER" ]] || { echo "Missing or unreadable RSLC helper: $RSLC_HELPER" >&2; exit 2; }
 base=(--bbox "${BBOX[@]}" --track "$TRACK" --frame "$FRAME" --dates "$START_DATE" "$END_DATE")
 if [[ "$mode" == search ]]; then
     [[ ! -e "$IDS_FILE" ]] || { echo "Existing list preserved: $IDS_FILE" >&2; exit 2; }

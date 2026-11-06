@@ -188,7 +188,7 @@ pair projects are not reused by this mode.
 
 ### Bash wrapper with a temporal baseline in days
 
-Keep `run_nisar_rslc_stack.sh` beside the **updated** `run_nisar_rslc.py`.
+Keep the shell launcher in `Cases/` and place the **updated** `run_nisar_rslc.py` in the SWEETS repository root (`$SWEETS_REPO/run_nisar_rslc.py`). To use a different helper location, set an absolute `RSLC_HELPER` in the site settings.
 Edit the shell settings or supply a trusted settings file as argument 2 to
 every command. The included AOI and track/frame are Langtung examples.
 Set `MAX_TEMPORAL_BASELINE_DAYS=36` for all pairs at most 36 calendar days
