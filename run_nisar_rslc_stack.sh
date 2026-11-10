@@ -10,7 +10,7 @@ case "$mode" in
 esac
 
 # Example settings for Langtung. Change these for a different study area.
-SITE=Langtung
+SITE=Langtung_NISAR
 BBOX=(85.3894 28.1588 85.6635 28.3509)
 TRACK=98
 FRAME=16
@@ -26,7 +26,7 @@ SWEETS_REPO="$HOME/Bhaltos/AoqingShare/sfw/sweets"
 if [[ -n "${2:-}" ]]; then source "$2"; fi
 RSLC_HELPER=${RSLC_HELPER:-"$SWEETS_REPO/run_nisar_rslc.py"}
 # One named root contains the ID list, terrain and processing outputs.
-STACK_ROOT=${STACK_ROOT:-"$HOME/Bhaltos/AoqingShare/NISAR_Projects/${SITE}_NISAR_stack"}
+STACK_ROOT=${STACK_ROOT:-"$HOME/Bhaltos/AoqingShare/NISAR_Projects/${SITE}_stack"}
 IDS_FILE=${IDS_FILE:-"$STACK_ROOT/${SITE}_rslc_ids.txt"}
 PROJECT=${PROJECT:-"$STACK_ROOT/processing"}
 DEM_CACHE=${DEM_CACHE:-"$STACK_ROOT/dem"}
@@ -35,17 +35,25 @@ DEM_CACHE=${DEM_CACHE:-"$STACK_ROOT/dem"}
 cd "$SWEETS_REPO"
 [[ -f "$RSLC_HELPER" && -r "$RSLC_HELPER" ]] || { echo "Missing or unreadable RSLC helper: $RSLC_HELPER" >&2; exit 2; }
 base=(--bbox "${BBOX[@]}" --track "$TRACK" --frame "$FRAME" --dates "$START_DATE" "$END_DATE")
-if [[ "$mode" == search ]]; then
-    [[ ! -e "$IDS_FILE" ]] || { echo "Existing list preserved: $IDS_FILE" >&2; exit 2; }
-    mkdir -p -- "$(dirname -- "$IDS_FILE")"
-    tmp=$(mktemp "${IDS_FILE}.XXXXXX")
-    trap 'rm -f -- "$tmp"' EXIT
-    pixi run python "$RSLC_HELPER" search "${base[@]}" | awk '/^NISAR_L1_PR_RSLC_/ {print}' > "$tmp"
-    [[ -s "$tmp" ]] || { echo 'No RSLC IDs returned.' >&2; exit 1; }
-    ln "$tmp" "$IDS_FILE"
-    echo "Review $IDS_FILE; keep one compatible product per acquisition date."
-    exit 0
+# Hold one lock across list preparation, downloads and processing.
+mkdir -p -- "$STACK_ROOT"
+exec 9>"$STACK_ROOT/.run.lock"
+flock -n 9 || { echo "Another run is active in $STACK_ROOT" >&2; exit 2; }
+pixi run python "$SWEETS_REPO/prepare_nisar_stack.py" --helper "$RSLC_HELPER" --ids-file "$IDS_FILE" -- "${base[@]}"
+[[ "$mode" != search ]] || exit 0
+# Preserve previous attempts. Reuse their RSLCs, but regenerate unverified GSLCs.
+if [[ "$mode" == run && -e "$PROJECT" ]]; then
+    previous_project="$PROJECT"
+    attempt=2
+    while [[ -e "${previous_project}_$attempt" ]]; do
+        previous_candidate="${previous_project}_$attempt"
+        attempt=$((attempt + 1))
+    done
+    export RSLC_REUSE_PROJECT="${previous_candidate:-$previous_project}"
+    PROJECT="${previous_project}_$attempt"
 fi
+echo "ID list: $IDS_FILE"
+echo "Processing directory: $PROJECT"
 args=("${base[@]}" --ids-file "$IDS_FILE" --max-days "$MAX_TEMPORAL_BASELINE_DAYS")
 if [[ -n "$MAX_BANDWIDTH" ]]; then args+=(--max-bandwidth "$MAX_BANDWIDTH"); fi
 if [[ "$mode" == plan ]]; then
@@ -111,5 +119,6 @@ PYDEM
     rm -f -- "$dem_result"
     trap - EXIT
 fi
+printf '%s\n' "$DEM" > "$STACK_ROOT/dem_path.txt"
 echo "RSLC geocoding DEM: $DEM"
 exec pixi run python "$RSLC_HELPER" stack "${args[@]}" --dem "$DEM" --project "$PROJECT" --frequency "$FREQUENCY" --pol "$POL" --posting "$POSTING"

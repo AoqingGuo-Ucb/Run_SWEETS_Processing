@@ -246,14 +246,14 @@ in the local development environment.
 
 ### Keep a study under one named directory
 
-The stack launcher now defaults to `${SITE}_NISAR_stack`, independent of the
+The stack launcher now defaults to `${SITE}_stack`, independent of the
 baseline limit. Set these variables in your trusted site settings file (alongside
 your existing bbox, track, frame and dates):
 
 ```bash
-SITE=PBLC
+SITE=PBLC_NISAR
 STACK_ROOT="$HOME/Bhaltos/AoqingShare/NISAR_Projects/PBLC_NISAR_stack"
-IDS_FILE="$STACK_ROOT/PBLC_rslc_ids.txt"
+IDS_FILE="$STACK_ROOT/${SITE}_rslc_ids.txt"
 PROJECT="$STACK_ROOT/processing"
 DEM_CACHE="$STACK_ROOT/dem"
 ```
@@ -271,3 +271,37 @@ absolute paths, so moving them alone is not a supported migration. The processin
 directory must be new; for another run use a new child such as `processing_02`
 while retaining the same root and DEM cache. Copy an already reviewed ID list to
 the new IDS_FILE to avoid repeating search; do not overwrite a different list.
+
+The PBLC launcher `run_sweets_landslide_PBLC_nisar_rslc.sh` contains the supplied PBLC settings. Both launchers derive the default root as `${SITE}_stack`; for example `SITE=PBLC_NISAR` gives `PBLC_NISAR_stack`. Explicit environment or site-settings path overrides still take precedence. Missing/empty ID lists are reported before processing.
+
+### Automated run preparation
+
+Install `prepare_nisar_stack.py`, `run_nisar_rslc.py`, and
+`check_nisar_images.py` in SWEETS_REPO, and put the launcher in Cases.
+`bash run_sweets_landslide_PBLC_nisar_rslc.sh run` now prepares a missing ID list
+by searching automatically. Existing lists are used rather than silently expanded.
+Search arguments are recorded; changed search arguments require a new list path
+or explicit review. Same-date products are automatically reduced only when every
+filename field except the terminal revision counter agrees; the highest counter
+is retained. Other same-date conflicts stop processing. Selection decisions are
+saved beside the list. An existing list is backed up before changes.
+
+A study lock prevents concurrent launcher runs. Existing processing directories
+are preserved and the next run uses `processing_2`, `processing_3`, etc. Downloads
+are reused from previous attempts under the same study root when the exact source
+URL matches; an explicitly set RSLC_REUSE_PROJECT can supply a legacy project.
+The required HDF5 dataset and edge samples are read before reuse; this is not a
+full checksum validation. Corrupt cached inputs stop processing for review.
+GSLC generation is repeated in the new attempt, rather than trusting incomplete
+outputs. This is restart with input reuse, not stage-level checkpoint recovery;
+even rerunning a completed project starts a new attempt.
+
+Per-acquisition intensity previews are attempted automatically when the preview
+helper is installed. Preview failures are warnings and do not certify scientific
+quality. `dem_path.txt` at the study root records the actual DEM for downstream
+use. ZoomInSAR configuration is not edited automatically. No legacy folders are
+moved or deleted. Reusing external RSLCs leaves them in their original location.
+
+Validation: offline planning/selection/default tests and shell syntax checks.
+Real ISCE3, Earthdata downloads, and Dolphin processing must be verified on the
+processing machine; they are not available in the local development environment.

@@ -60,3 +60,18 @@ class StackTests(unittest.TestCase):
             self.assertEqual(proc['input_subset']['list_of_frequencies'], {band: ['HH']})
             self.assertEqual((groups['debug_level_group'], proc['blocksize'], proc['flatten']),
                              ({'debug_switch': False}, 512, True))
+
+class SelectionTests(unittest.TestCase):
+    def test_revision_selection(self):
+        from prepare_nisar_stack import select_products
+        self.assertEqual(select_products([A, A[:-3]+'002', B, B]), [A[:-3]+'002', B])
+
+    def test_ambiguous_release(self):
+        from prepare_nisar_stack import select_products
+        with self.assertRaises(ValueError):
+            select_products([A, A.replace('P05023', 'X05026'), B])
+
+    def test_changed_timestamp(self):
+        from prepare_nisar_stack import select_products
+        with self.assertRaises(ValueError):
+            select_products([A, A.replace('T233918', 'T233919'), B])

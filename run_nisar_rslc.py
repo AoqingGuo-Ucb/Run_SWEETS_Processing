@@ -147,6 +147,20 @@ def main():
     if previous:
         previous = Path(previous).expanduser().resolve()
         previous_sources = json.loads((previous/'sources.json').read_text())['sources']
+    # Discover prior attempts within this study, plus an explicitly supplied legacy project.
+    reuse_projects = list(args.project.resolve().parent.glob('*/sources.json'))
+    if previous:
+        reuse_projects.insert(0, previous / 'sources.json')
+    reusable = {}
+    for manifest in reuse_projects:
+        try:
+            sources = json.loads(manifest.read_text())['sources']
+            for name, url in sources.items():
+                candidate = manifest.parent / 'rslc' / (name + '.h5')
+                if candidate.is_file() and urls.get(name) == url:
+                    reusable.setdefault(name, candidate)
+        except (OSError, ValueError, KeyError):
+            continue
     earthaccess.login()
     root = args.project.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -167,8 +181,13 @@ def main():
     common_valid = None
     for name in ids:
         src = raw/(name+'.h5')
-        cached = previous/'rslc'/src.name if previous else None
-        if cached and cached.is_file() and previous_sources.get(name) == urls[name]:
+        cached = reusable.get(name)
+        if cached:
+            # Check that the required complex dataset is readable before reuse.
+            with h5py.File(cached) as cached_hf:
+                cached_ds = cached_hf[f'/science/LSAR/RSLC/swaths/frequency{freq}/{pol}']
+                cached_ds[0:1, 0:1]
+                cached_ds[-1:, -1:]
             src = cached
             print(f'Reusing RSLC: {src}', flush=True)
         else:
@@ -221,6 +240,13 @@ def main():
         expected_grid=grid
         vrts.append(Path(paths[0]))
         ds=None
+        preview = Path(__file__).with_name('check_nisar_images.py')
+        if preview.is_file():
+            result = subprocess.run([sys.executable, str(preview), '--rslc', str(src),
+                '--gslc', str(out), '--frequency', freq, '--pol', pol,
+                '--output', str(folder / 'inspection')])
+            if result.returncode:
+                print(f'WARNING: Preview failed for {name}; processing continues.', flush=True)
     cfg=build_displacement_config(vrts,root/'dolphin',options=DolphinOptions(strides=(1,1),max_bandwidth=min(args.max_bandwidth or 1,len(ids)-1),
         run_timeseries=False),subdataset='/unused-for-raster-inputs',wavelength=299792458.0/centers[0])
     if args.max_days is not None:
