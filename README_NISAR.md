@@ -243,3 +243,31 @@ an independent map, and check alignment across dates separately. The processing
 script's existing grid and common-valid-sample checks do not prove subpixel
 alignment. This preview utility has not been validated against real NISAR files
 in the local development environment.
+
+### Keep a study under one named directory
+
+The stack launcher now defaults to `${SITE}_NISAR_stack`, independent of the
+baseline limit. Set these variables in your trusted site settings file (alongside
+your existing bbox, track, frame and dates):
+
+```bash
+SITE=PBLC
+STACK_ROOT="$HOME/Bhaltos/AoqingShare/NISAR_Projects/PBLC_NISAR_stack"
+IDS_FILE="$STACK_ROOT/PBLC_rslc_ids.txt"
+PROJECT="$STACK_ROOT/processing"
+DEM_CACHE="$STACK_ROOT/dem"
+```
+
+Search writes the ID list under this root. Automatic terrain preparation writes
+`dem/<bounds-hash>/dem.tif`. Processing writes downloaded RSLCs under
+`processing/rslc/`, locally generated GSLCs under `processing/<RSLC-ID>/`, and
+Dolphin outputs under `processing/dolphin/`. You can name STACK_ROOT `PBLC`
+instead. Explicit DEM, IDS_FILE and PROJECT settings still take precedence;
+point them inside the root if all files must be contained there. RSLC reuse still
+reads its previous location in place and does not relocate those files.
+
+Existing projects are not moved or renamed. Their YAML/VRT files may contain
+absolute paths, so moving them alone is not a supported migration. The processing
+directory must be new; for another run use a new child such as `processing_02`
+while retaining the same root and DEM cache. Copy an already reviewed ID list to
+the new IDS_FILE to avoid repeating search; do not overwrite a different list.

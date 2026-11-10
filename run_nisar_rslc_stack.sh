@@ -25,14 +25,19 @@ DEM=""             # Empty: prepare a DEM with SWEETS. Otherwise use an existing
 SWEETS_REPO="$HOME/Bhaltos/AoqingShare/sfw/sweets"
 if [[ -n "${2:-}" ]]; then source "$2"; fi
 RSLC_HELPER=${RSLC_HELPER:-"$SWEETS_REPO/run_nisar_rslc.py"}
-IDS_FILE=${IDS_FILE:-"$script_dir/${SITE}_rslc_ids.txt"}
-PROJECT=${PROJECT:-"$HOME/Bhaltos/AoqingShare/NISAR_Projects/${SITE}_RSLC_${MAX_TEMPORAL_BASELINE_DAYS}d"}
+# One named root contains the ID list, terrain and processing outputs.
+STACK_ROOT=${STACK_ROOT:-"$HOME/Bhaltos/AoqingShare/NISAR_Projects/${SITE}_NISAR_stack"}
+IDS_FILE=${IDS_FILE:-"$STACK_ROOT/${SITE}_rslc_ids.txt"}
+PROJECT=${PROJECT:-"$STACK_ROOT/processing"}
+DEM_CACHE=${DEM_CACHE:-"$STACK_ROOT/dem"}
+[[ "$STACK_ROOT" == /* && "$DEM_CACHE" == /* ]] || { echo 'Use absolute root/cache paths.' >&2; exit 2; }
 [[ "$IDS_FILE" == /* && "$PROJECT" == /* && "$RSLC_HELPER" == /* ]] || { echo 'Use absolute paths in settings.' >&2; exit 2; }
 cd "$SWEETS_REPO"
 [[ -f "$RSLC_HELPER" && -r "$RSLC_HELPER" ]] || { echo "Missing or unreadable RSLC helper: $RSLC_HELPER" >&2; exit 2; }
 base=(--bbox "${BBOX[@]}" --track "$TRACK" --frame "$FRAME" --dates "$START_DATE" "$END_DATE")
 if [[ "$mode" == search ]]; then
     [[ ! -e "$IDS_FILE" ]] || { echo "Existing list preserved: $IDS_FILE" >&2; exit 2; }
+    mkdir -p -- "$(dirname -- "$IDS_FILE")"
     tmp=$(mktemp "${IDS_FILE}.XXXXXX")
     trap 'rm -f -- "$tmp"' EXIT
     pixi run python "$RSLC_HELPER" search "${base[@]}" | awk '/^NISAR_L1_PR_RSLC_/ {print}' > "$tmp"
@@ -52,10 +57,10 @@ else
     [[ ! -e "$PROJECT" ]] || { echo "Project already exists: $PROJECT" >&2; exit 2; }
     # Reject an invalid date network before downloading terrain data.
     python3 "$RSLC_HELPER" plan "${args[@]}" >/dev/null
-    # Keep terrain outside PROJECT: the stack runner requires a new project directory.
+    # Keep terrain inside STACK_ROOT but outside the new processing directory.
     dem_result=$(mktemp)
     trap 'rm -f -- "$dem_result"' EXIT
-    pixi run python - "$dem_result" "$PROJECT" "${BBOX[@]}" <<'PYDEM'
+    pixi run python - "$dem_result" "$DEM_CACHE" "${BBOX[@]}" <<'PYDEM'
 import contextlib
 import fcntl
 import hashlib
@@ -67,11 +72,11 @@ from osgeo import gdal, osr
 from sweets.dem import create_dem
 
 result = Path(sys.argv[1])
-project = Path(sys.argv[2])
+cache_root = Path(sys.argv[2])
 w, s, e, n = map(float, sys.argv[3:])
 bounds = (max(-180., w-.25), max(-90., s-.25), min(180., e+.25), min(90., n+.25))
 key = hashlib.sha256(json.dumps(bounds).encode()).hexdigest()[:20]
-cache = project.parent / "nisar_rslc_dem_cache" / key
+cache = cache_root / key
 cache.mkdir(parents=True, exist_ok=True)
 target = cache / "dem.tif"
 
