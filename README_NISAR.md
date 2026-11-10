@@ -218,3 +218,28 @@ in the environment to its absolute path, and `PROJECT` to a new directory
 RSLCs in place if the filename and recorded source URL match, and downloads
 the remaining products. Keep the old directory available. The driver does
 not reuse partial geocoding outputs.
+
+### Inspect locally generated RSLC/GSLC images
+
+`check_nisar_images.py` reads existing products without downloading or modifying
+input data. Copy it to the SWEETS repository on the processing machine, then run:
+
+```bash
+pixi run python check_nisar_images.py \
+  --rslc /absolute/path/to/input_RSLC.h5 \
+  --gslc /absolute/path/to/generated_GSLC.h5 \
+  --frequency A --pol HH \
+  --output /absolute/path/to/new_inspection_directory
+```
+
+Requires h5py, numpy and matplotlib. Outputs `rslc_intensity.png`,
+`gslc_intensity.png` and `report.json`. The previews show log magnitude with
+independent percentile stretches and masked invalid/zero pixels. Reads are
+subsampled to limit memory. RSLC is shown in radar coordinates (full input),
+while GSLC uses map coordinates (usually the selected AOI); their shapes and
+brightness should not be compared pixel-for-pixel. These are diagnostic previews,
+not a geolocation or coregistration certification. Check GSLC positions against
+an independent map, and check alignment across dates separately. The processing
+script's existing grid and common-valid-sample checks do not prove subpixel
+alignment. This preview utility has not been validated against real NISAR files
+in the local development environment.
